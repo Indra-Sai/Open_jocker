@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://raw.githubusercontent.com/Indra-G-H/open-jocker/main/banner.png" alt="Open Jocker Banner" width="100%">
+  <img src="./open_jocker_banner.png" alt="Open Jocker Banner" width="100%">
 </p>
 
 # 🃏 Open Jocker
