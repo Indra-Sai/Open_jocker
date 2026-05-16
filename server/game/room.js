@@ -1,7 +1,7 @@
 // room.js — Room state machine
 
 const { createMultiDeck, shuffle, calcNumDecks, dealCards, pickTrumpSuit } = require('./deck');
-const { calculateRoundScores } = require('./scoring');
+const { calculatePoints, calculateRoundScores } = require('./scoring');
 const { selectAutoPlayCard, getLegalCards } = require('./autoplay');
 
 const PHASES = {
@@ -20,7 +20,10 @@ class Room {
     this.config = {
       numPlayers: config.numPlayers,
       numRounds: Math.min(config.numRounds || 10, 20),
+      // Team mode only valid with an even player count
+      mode: config.mode === 'team' && config.numPlayers % 2 === 0 ? 'team' : 'single',
     };
+    this.teams = []; // populated by assignTeams() when game starts
     this.chatLog = [];
     this.gameState = {
       phase: PHASES.WAITING,
@@ -30,12 +33,13 @@ class Room {
       bids: {},
       tricksWon: {},
       hands: {},
-      table: [], // cards played this sub-round: [{playerId, card, autoPlayed}]
-      scores: [], // array of round score objects
-      currentPlayerIndex: 0, // index in players array of whose turn it is
-      leadPlayerIndex: 0, // who leads this sub-round
-      bidOrder: [], // player ids in bid/play order for this round
-      subRoundLeaderIndex: 0, // index in bidOrder of sub-round leader
+      table: [],
+      scores: [],
+      currentPlayerIndex: 0,
+      leadPlayerIndex: 0,
+      bidOrder: [],   // bidders only (N/2 in team mode, N in single mode)
+      playOrder: [],  // all players in play rotation
+      subRoundLeaderIndex: 0,
     };
     this.autoPlayTimers = {};
   }
@@ -76,42 +80,65 @@ class Room {
     return this.players.length === this.config.numPlayers && this.gameState.phase === PHASES.WAITING;
   }
 
+  // Assign teams by joining order: player[i] & player[i + N/2] are a team.
+  // Called once at game start.
+  assignTeams() {
+    if (this.config.mode !== 'team') return;
+    const n    = this.players.length;
+    const half = n / 2;
+    this.teams = Array.from({ length: half }, (_, i) => ({
+      id:        `team-${i}`,
+      name:      `Team ${i + 1}`,
+      memberIds: [this.players[i].id, this.players[i + half].id],
+      bidderId:  this.players[i].id, // lower-index member always bids
+    }));
+  }
+
   startGame() {
     if (!this.canStart()) return { error: 'Cannot start yet' };
     this.gameState.scores = [];
+    this.assignTeams();
     this.startRound(1);
     return { success: true };
   }
 
   startRound(roundNum) {
     const gs = this.gameState;
-    gs.currentRound = roundNum;
+    gs.currentRound    = roundNum;
     gs.currentSubRound = 0;
-    gs.bids = {};
-    gs.tricksWon = {};
-    gs.table = [];
+    gs.bids            = {};
+    gs.tricksWon       = {};
+    gs.table           = [];
 
-    // Calculate decks and deal
-    const numDecks = calcNumDecks(this.players.length, this.config.numRounds);
-    const pool = shuffle(createMultiDeck(numDecks));
+    // Deal cards
+    const numDecks  = calcNumDecks(this.players.length, this.config.numRounds);
+    const pool      = shuffle(createMultiDeck(numDecks));
     const dealtHands = dealCards(pool, this.players.length, roundNum);
-
-    // Assign hands by playerId
     gs.hands = {};
-    this.players.forEach((p, i) => {
-      gs.hands[p.id] = dealtHands[i];
-    });
+    this.players.forEach((p, i) => { gs.hands[p.id] = dealtHands[i]; });
 
     gs.trumpSuit = pickTrumpSuit();
 
-    // Bidding order: first bidder = (roundNum - 1) % numPlayers (0-indexed)
-    const firstBidderIdx = (roundNum - 1) % this.players.length;
-    gs.bidOrder = [];
-    for (let i = 0; i < this.players.length; i++) {
-      gs.bidOrder.push(this.players[(firstBidderIdx + i) % this.players.length].id);
+    if (this.config.mode === 'team') {
+      // bidOrder: one bidder per team, team rotation shifts each round
+      const firstTeamIdx = (roundNum - 1) % this.teams.length;
+      gs.bidOrder = Array.from({ length: this.teams.length }, (_, i) =>
+        this.teams[(firstTeamIdx + i) % this.teams.length].bidderId
+      );
+      // playOrder: all players starting from same position as the first bidder
+      const firstBidderPos = this.players.findIndex(p => p.id === gs.bidOrder[0]);
+      gs.playOrder = Array.from({ length: this.players.length }, (_, i) =>
+        this.players[(firstBidderPos + i) % this.players.length].id
+      );
+    } else {
+      const firstBidderIdx = (roundNum - 1) % this.players.length;
+      gs.bidOrder = Array.from({ length: this.players.length }, (_, i) =>
+        this.players[(firstBidderIdx + i) % this.players.length].id
+      );
+      gs.playOrder = [...gs.bidOrder];
     }
 
-    gs.currentPlayerIndex = 0; // index into bidOrder
+    gs.currentPlayerIndex = 0;
     gs.phase = PHASES.BIDDING;
 
     return { success: true };
@@ -126,8 +153,7 @@ class Room {
     gs.bids[playerId] = bid;
     gs.currentPlayerIndex++;
 
-    if (gs.currentPlayerIndex >= this.players.length) {
-      // All bids in — start play
+    if (gs.currentPlayerIndex >= gs.bidOrder.length) {
       this.startSubRound(0);
     }
 
@@ -137,26 +163,24 @@ class Room {
   startSubRound(subRoundIndex) {
     const gs = this.gameState;
     gs.currentSubRound = subRoundIndex + 1;
-    gs.table = [];
-    gs.phase = PHASES.PLAYING;
+    gs.table           = [];
+    gs.phase           = PHASES.PLAYING;
 
     if (subRoundIndex === 0) {
-      // First sub-round: leader is first bidder (index 0 in bidOrder)
       gs.subRoundLeaderIndex = 0;
     }
-    // currentPlayerIndex = subRoundLeaderIndex (who leads)
     gs.currentPlayerIndex = gs.subRoundLeaderIndex;
   }
 
   isLegalCard(playerId, cardId) {
-    const gs = this.gameState;
+    const gs   = this.gameState;
     const hand = gs.hands[playerId];
     const card = hand?.find(c => c.id === cardId);
     if (!card) return { legal: false, error: 'Card not in hand' };
 
-    if (gs.table.length === 0) return { legal: true }; // leading — any card
+    if (gs.table.length === 0) return { legal: true };
 
-    const baseSuit = gs.table[0].card.suit;
+    const baseSuit    = gs.table[0].card.suit;
     const hasBaseSuit = hand.some(c => c.suit === baseSuit);
     if (hasBaseSuit && card.suit !== baseSuit) {
       return { legal: false, error: `You must play a ${baseSuit} card` };
@@ -168,21 +192,19 @@ class Room {
     const gs = this.gameState;
     if (gs.phase !== PHASES.PLAYING) return { error: 'Not in playing phase' };
 
-    const currentPlayerId = gs.bidOrder[gs.currentPlayerIndex % this.players.length];
+    const currentPlayerId = gs.playOrder[gs.currentPlayerIndex % this.players.length];
     if (!autoPlayed && currentPlayerId !== playerId) return { error: 'Not your turn' };
 
     const legalCheck = this.isLegalCard(playerId, cardId);
     if (!legalCheck.legal) return { error: legalCheck.error };
 
-    // Remove card from hand
-    const hand = gs.hands[playerId];
+    const hand    = gs.hands[playerId];
     const cardIdx = hand.findIndex(c => c.id === cardId);
-    const [card] = hand.splice(cardIdx, 1);
+    const [card]  = hand.splice(cardIdx, 1);
 
     gs.table.push({ playerId, card, autoPlayed });
     gs.currentPlayerIndex = (gs.currentPlayerIndex + 1) % this.players.length;
 
-    // Check if all players have played
     if (gs.table.length === this.players.length) {
       return this.resolveSubRound();
     }
@@ -191,47 +213,34 @@ class Room {
   }
 
   resolveSubRound() {
-    const gs = this.gameState;
+    const gs       = this.gameState;
     const baseSuit = gs.table[0].card.suit;
     const trumpSuit = gs.trumpSuit;
 
-    // Find winner per §2.5.3
-    let winner = null;
     let winnerEntry = null;
 
     for (const entry of gs.table) {
       const { card } = entry;
-      const isTrump = card.suit === trumpSuit;
-      const isBase = card.suit === baseSuit;
+      const isTrump  = card.suit === trumpSuit;
+      const isBase   = card.suit === baseSuit;
 
-      if (!winner) {
-        winner = entry;
-        winnerEntry = entry;
-        continue;
-      }
+      if (!winnerEntry) { winnerEntry = entry; continue; }
 
       const winIsTrump = winnerEntry.card.suit === trumpSuit;
-      const winIsBase = winnerEntry.card.suit === baseSuit;
 
       if (isTrump && winIsTrump) {
-        if (card.value > winnerEntry.card.value) {
-          winner = entry; winnerEntry = entry;
-        }
+        if (card.value > winnerEntry.card.value) winnerEntry = entry;
       } else if (isTrump && !winIsTrump) {
-        winner = entry; winnerEntry = entry;
+        winnerEntry = entry;
       } else if (isBase && !winIsTrump) {
-        if (card.value > winnerEntry.card.value) {
-          winner = entry; winnerEntry = entry;
-        }
+        if (card.value > winnerEntry.card.value) winnerEntry = entry;
       }
-      // waste card — cannot win
     }
 
     const winnerId = winnerEntry.playerId;
     gs.tricksWon[winnerId] = (gs.tricksWon[winnerId] || 0) + 1;
 
-    // Next sub-round leader
-    gs.subRoundLeaderIndex = gs.bidOrder.indexOf(winnerId);
+    gs.subRoundLeaderIndex = gs.playOrder.indexOf(winnerId);
 
     const subRoundResult = {
       winnerId,
@@ -240,25 +249,38 @@ class Room {
       baseSuit,
     };
 
-    // Check if round is done
     if (gs.currentSubRound >= gs.currentRound) {
       return this.endRound(subRoundResult);
     }
 
-    this.startSubRound(gs.currentSubRound); // increment sub-round
+    this.startSubRound(gs.currentSubRound);
     return { success: true, subRoundEnd: true, subRoundResult };
   }
 
   endRound(lastSubRoundResult) {
     const gs = this.gameState;
-    const playerIds = this.players.map(p => p.id);
-    const roundScores = calculateRoundScores(gs.bids, gs.tricksWon, playerIds);
+    let roundScores;
+
+    if (this.config.mode === 'team') {
+      roundScores = {};
+      for (const team of this.teams) {
+        const teamTricks = team.memberIds.reduce((sum, pid) => sum + (gs.tricksWon[pid] || 0), 0);
+        const teamBid    = gs.bids[team.bidderId];
+        const pts        = calculatePoints(teamBid, teamTricks);
+        for (const pid of team.memberIds) {
+          roundScores[pid] = pts;
+        }
+      }
+    } else {
+      const playerIds = this.players.map(p => p.id);
+      roundScores = calculateRoundScores(gs.bids, gs.tricksWon, playerIds);
+    }
 
     gs.scores.push({
-      round: gs.currentRound,
-      bids: { ...gs.bids },
-      tricksWon: { ...gs.tricksWon },
-      points: roundScores,
+      round:      gs.currentRound,
+      bids:       { ...gs.bids },
+      tricksWon:  { ...gs.tricksWon },
+      points:     roundScores,
     });
 
     gs.phase = PHASES.ROUND_END;
@@ -267,24 +289,10 @@ class Room {
 
     if (gs.currentRound >= this.config.numRounds) {
       gs.phase = PHASES.GAME_OVER;
-      return {
-        success: true,
-        roundEnd: true,
-        lastSubRoundResult,
-        roundScores,
-        cumulativeScores,
-        gameOver: true,
-      };
+      return { success: true, roundEnd: true, lastSubRoundResult, roundScores, cumulativeScores, gameOver: true };
     }
 
-    return {
-      success: true,
-      roundEnd: true,
-      lastSubRoundResult,
-      roundScores,
-      cumulativeScores,
-      gameOver: false,
-    };
+    return { success: true, roundEnd: true, lastSubRoundResult, roundScores, cumulativeScores, gameOver: false };
   }
 
   advanceToNextRound() {
@@ -307,41 +315,52 @@ class Room {
 
   getCurrentPlayerInfo() {
     const gs = this.gameState;
-    if (gs.phase === PHASES.BIDDING || gs.phase === PHASES.PLAYING) {
-      const pid = gs.bidOrder[gs.currentPlayerIndex % this.players.length];
+    if (gs.phase === PHASES.BIDDING) {
+      const pid = gs.bidOrder[gs.currentPlayerIndex % gs.bidOrder.length];
+      return this.getPlayer(pid);
+    }
+    if (gs.phase === PHASES.PLAYING) {
+      const pid = gs.playOrder[gs.currentPlayerIndex % this.players.length];
       return this.getPlayer(pid);
     }
     return null;
   }
 
   getAutoPlayCard(playerId) {
-    const gs = this.gameState;
-    const hand = gs.hands[playerId];
+    const gs      = this.gameState;
+    const hand    = gs.hands[playerId];
     const baseSuit = gs.table.length > 0 ? gs.table[0].card.suit : null;
     return selectAutoPlayCard(hand, baseSuit, gs.trumpSuit);
   }
 
   getPublicState() {
     const gs = this.gameState;
+    const currentPlayerId = gs.phase === PHASES.BIDDING
+      ? gs.bidOrder?.[gs.currentPlayerIndex % (gs.bidOrder?.length || 1)]
+      : gs.playOrder?.[gs.currentPlayerIndex % this.players.length];
+
     return {
-      phase: gs.phase,
-      currentRound: gs.currentRound,
-      currentSubRound: gs.currentSubRound,
-      trumpSuit: gs.trumpSuit,
-      bids: gs.bids,
-      tricksWon: gs.tricksWon,
-      table: gs.table,
-      scores: gs.scores,
-      currentPlayerId: gs.bidOrder?.[gs.currentPlayerIndex % this.players.length],
-      bidOrder: gs.bidOrder,
+      phase:            gs.phase,
+      currentRound:     gs.currentRound,
+      currentSubRound:  gs.currentSubRound,
+      trumpSuit:        gs.trumpSuit,
+      bids:             gs.bids,
+      tricksWon:        gs.tricksWon,
+      table:            gs.table,
+      scores:           gs.scores,
+      currentPlayerId,
+      bidOrder:         gs.bidOrder,
+      playOrder:        gs.playOrder,
       players: this.players.map(p => ({
-        id: p.id,
-        name: p.name,
+        id:        p.id,
+        name:      p.name,
         connected: p.connected,
-        isHost: p.id === this.hostId,
+        isHost:    p.id === this.hostId,
       })),
-      config: this.config,
+      config:           this.config,
       cumulativeScores: this.getCumulativeScores(),
+      mode:             this.config.mode,
+      teams:            this.config.mode === 'team' ? this.teams : null,
     };
   }
 
@@ -349,7 +368,7 @@ class Room {
     return {
       ...this.getPublicState(),
       myHand: this.gameState.hands[playerId] || [],
-      myId: playerId,
+      myId:   playerId,
     };
   }
 
@@ -359,7 +378,7 @@ class Room {
       playerName: player?.name || 'Unknown',
       playerId,
       text: text.slice(0, 500),
-      ts: Date.now(),
+      ts:   Date.now(),
     };
     this.chatLog.push(msg);
     if (this.chatLog.length > 60) this.chatLog.shift();

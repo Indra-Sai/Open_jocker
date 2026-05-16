@@ -1,6 +1,34 @@
 // components/Scoreboard.jsx
-export default function Scoreboard({ players, scores, cumulativeScores, numRounds, onClose }) {
-  const sorted = [...players].sort((a, b) => (cumulativeScores[b.id] || 0) - (cumulativeScores[a.id] || 0));
+export default function Scoreboard({ players, scores, cumulativeScores, numRounds, teams, mode, onClose }) {
+
+  // Build display rows
+  let rows;
+  if (mode === 'team' && teams?.length) {
+    rows = teams.map(team => ({
+      key:       team.id,
+      label:     team.name,
+      sublabel:  team.memberIds.map(pid => players.find(p => p.id === pid)?.name).filter(Boolean).join(' & '),
+      isHost:    false,
+      cumulative: cumulativeScores[team.memberIds[0]] || 0,
+      getRoundPoints: (s) => s.points[team.memberIds[0]] ?? 0,
+      getRoundBid:    (s) => s.bids[team.bidderId ?? team.memberIds[0]],
+      getRoundWon:    (s) => team.memberIds.reduce((sum, pid) => sum + (s.tricksWon[pid] || 0), 0),
+      bidderId:   team.bidderId ?? team.memberIds[0],
+    }));
+  } else {
+    rows = players.map(p => ({
+      key:       p.id,
+      label:     p.name,
+      sublabel:  null,
+      isHost:    p.isHost,
+      cumulative: cumulativeScores[p.id] || 0,
+      getRoundPoints: (s) => s.points[p.id] ?? 0,
+      getRoundBid:    (s) => s.bids[p.id],
+      getRoundWon:    (s) => s.tricksWon[p.id] || 0,
+    }));
+  }
+
+  rows.sort((a, b) => b.cumulative - a.cumulative);
 
   return (
     <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={onClose}>
@@ -9,7 +37,12 @@ export default function Scoreboard({ players, scores, cumulativeScores, numRound
 
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-white/[0.06]">
-          <h2 className="font-display text-2xl font-bold text-cream-100">Scoreboard</h2>
+          <div className="flex items-center gap-3">
+            <h2 className="font-display text-2xl font-bold text-cream-100">Scoreboard</h2>
+            {mode === 'team' && (
+              <span className="text-xs font-body text-teal-400/70 border border-teal-500/20 rounded-full px-2 py-0.5">Teams</span>
+            )}
+          </div>
           <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-lg bg-navy-700 text-white/40 hover:text-white/80 transition-colors">✕</button>
         </div>
 
@@ -18,7 +51,9 @@ export default function Scoreboard({ players, scores, cumulativeScores, numRound
           <table className="w-full text-sm font-body">
             <thead>
               <tr className="border-b border-white/[0.06]">
-                <th className="sticky left-0 bg-navy-800 text-left px-5 py-3 text-[10px] uppercase tracking-widest text-white/30 font-body">Player</th>
+                <th className="sticky left-0 bg-navy-800 text-left px-5 py-3 text-[10px] uppercase tracking-widest text-white/30 font-body">
+                  {mode === 'team' ? 'Team' : 'Player'}
+                </th>
                 {scores.map((s, i) => (
                   <th key={i} className="px-3 py-3 text-center text-[10px] uppercase tracking-widest text-white/30 min-w-[60px] font-body">
                     R{s.round}
@@ -33,26 +68,33 @@ export default function Scoreboard({ players, scores, cumulativeScores, numRound
               </tr>
             </thead>
             <tbody>
-              {sorted.map((player, rank) => (
-                <tr key={player.id} className="border-b border-white/[0.04] hover:bg-white/[0.02] transition-colors">
+              {rows.map((row, rank) => (
+                <tr key={row.key} className="border-b border-white/[0.04] hover:bg-white/[0.02] transition-colors">
                   <td className="sticky left-0 bg-navy-800 px-5 py-3">
                     <div className="flex items-center gap-2">
                       <span className="text-white/20 font-mono text-xs w-4">{rank + 1}</span>
-                      <span className={player.isHost ? 'text-coral-300 font-medium' : 'text-white/70'}>
-                        {player.name}{player.isHost && ' 👑'}
-                      </span>
+                      <div>
+                        <span className={row.isHost ? 'text-coral-300 font-medium block' : 'text-white/70 block'}>
+                          {row.label}{row.isHost && ' 👑'}
+                        </span>
+                        {row.sublabel && (
+                          <span className="text-white/30 text-[10px] block">{row.sublabel}</span>
+                        )}
+                      </div>
                     </div>
                   </td>
                   {scores.map((s, i) => {
-                    const pts = s.points[player.id] ?? 0;
-                    const bid = s.bids[player.id];
-                    const won = s.tricksWon[player.id] || 0;
+                    const pts = row.getRoundPoints(s);
+                    const bid = row.getRoundBid(s);
+                    const won = row.getRoundWon(s);
                     return (
                       <td key={i} className="px-3 py-2 text-center">
                         <div className={`font-mono font-bold text-sm ${pts > 0 ? 'text-teal-400' : pts < 0 ? 'text-red-400' : 'text-white/30'}`}>
                           {pts > 0 ? '+' : ''}{pts}
                         </div>
-                        <div className="text-white/25 text-[10px] mt-0.5">{bid}→{won}</div>
+                        <div className="text-white/25 text-[10px] mt-0.5">
+                          {bid !== undefined ? `${bid}→${won}` : '—'}
+                        </div>
                       </td>
                     );
                   })}
@@ -60,9 +102,7 @@ export default function Scoreboard({ players, scores, cumulativeScores, numRound
                     <td key={`f${i}`} className="px-3 py-2 text-center text-white/10 text-xs">—</td>
                   ))}
                   <td className="px-5 py-3 text-center">
-                    <span className="font-mono font-bold text-coral-400 text-base">
-                      {cumulativeScores[player.id] || 0}
-                    </span>
+                    <span className="font-mono font-bold text-coral-400 text-base">{row.cumulative}</span>
                   </td>
                 </tr>
               ))}

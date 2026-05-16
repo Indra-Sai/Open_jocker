@@ -5,7 +5,7 @@ import { create } from 'zustand';
 const useGameStore = create((set, get) => ({
   // Connection
   socket: null,
-  connected: false,
+  connected: null,
 
   // Identity
   playerId: null,

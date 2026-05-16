@@ -82,7 +82,10 @@ function scheduleAutoPlay(room) {
   const gs = room.gameState;
   if (gs.phase !== PHASES.PLAYING && gs.phase !== PHASES.BIDDING) return;
 
-  const currentPlayerId = gs.bidOrder?.[gs.currentPlayerIndex % room.players.length];
+  // In team mode bidOrder has fewer entries than players; use playOrder during playing.
+  const currentPlayerId = gs.phase === PHASES.BIDDING
+    ? gs.bidOrder?.[gs.currentPlayerIndex % (gs.bidOrder?.length || 1)]
+    : gs.playOrder?.[gs.currentPlayerIndex % room.players.length];
   if (!currentPlayerId) return;
 
   const player = room.getPlayer(currentPlayerId);
@@ -97,8 +100,12 @@ function scheduleAutoPlay(room) {
     if (!currentRoom) return;
 
     const gs2 = currentRoom.gameState;
-    const idx = gs2.currentPlayerIndex % currentRoom.players.length;
-    const stillCurrent = gs2.bidOrder?.[idx] === currentPlayerId;
+    const orderLen = gs2.phase === PHASES.BIDDING
+      ? (gs2.bidOrder?.length || 1)
+      : currentRoom.players.length;
+    const idx = gs2.currentPlayerIndex % orderLen;
+    const orderArr = gs2.phase === PHASES.BIDDING ? gs2.bidOrder : gs2.playOrder;
+    const stillCurrent = orderArr?.[idx] === currentPlayerId;
     const stillDisconnected = !currentRoom.getPlayer(currentPlayerId)?.connected;
 
     if (!stillCurrent || !stillDisconnected) {

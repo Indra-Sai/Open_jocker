@@ -29,14 +29,28 @@ export default function GameScreen({ socket, gameState, playerId }) {
     phase, currentRound, currentSubRound, trumpSuit,
     bids, tricksWon, table, myHand, players, currentPlayerId,
     scores, cumulativeScores, config, myId, roomCode,
+    mode, teams,
   } = gameState;
 
   const isMyTurn  = currentPlayerId === myId;
   const myPlayer  = players.find(p => p.id === myId);
   const isHost    = myPlayer?.isHost;
   const baseSuit  = table?.length > 0 ? table[0].card.suit : null;
-  const needsBid  = phase === 'bidding' && isMyTurn && bids[myId] === undefined;
   const currentPlayerName = players.find(p => p.id === currentPlayerId)?.name || '…';
+
+  // Team helpers
+  const getTeamForPlayer = (pid) => teams?.find(t => t.memberIds.includes(pid));
+  const getDisplayBid = (p) => {
+    if (mode !== 'team') return bids[p.id];
+    const team = getTeamForPlayer(p.id);
+    return bids[team?.bidderId];
+  };
+  const getDisplayTricks = (p) => {
+    if (mode !== 'team') return tricksWon[p.id] || 0;
+    const team = getTeamForPlayer(p.id);
+    if (!team) return tricksWon[p.id] || 0;
+    return (tricksWon[team.memberIds[0]] || 0) + (tricksWon[team.memberIds[1]] || 0);
+  };
 
   function playCard(cardId)   { socket.emit('play_card',        { cardId }); }
   function submitBid(bid)     { socket.emit('submit_bid',       { bid });    }
@@ -51,11 +65,13 @@ export default function GameScreen({ socket, gameState, playerId }) {
 
       {showScoreboard && (
         <Scoreboard players={players} scores={scores} cumulativeScores={cumulativeScores}
-          numRounds={config.numRounds} onClose={() => setShowScoreboard(false)} />
+          numRounds={config.numRounds} teams={teams} mode={mode}
+          onClose={() => setShowScoreboard(false)} />
       )}
 
       {showRoundSummary && lastRoundData && (
-        <RoundSummary data={lastRoundData} players={players} isHost={isHost} onSkip={skipRoundSummary} />
+        <RoundSummary data={lastRoundData} players={players} isHost={isHost}
+          teams={teams} mode={mode} onSkip={skipRoundSummary} />
       )}
 
       {showEndConfirm && (
@@ -82,6 +98,9 @@ export default function GameScreen({ socket, gameState, playerId }) {
       <header className="flex items-center justify-between px-3 py-2 bg-navy-900 border-b border-white/[0.06] flex-shrink-0 gap-2">
         <div className="flex items-center gap-2 min-w-0">
           <span className="font-display font-bold text-cream-100 text-sm tracking-wide whitespace-nowrap">🃏 Open Jocker</span>
+          {mode === 'team' && (
+            <span className="text-[10px] font-body text-teal-400/70 border border-teal-500/20 rounded px-1.5 py-0.5 whitespace-nowrap">Teams</span>
+          )}
           <button onClick={() => navigator.clipboard.writeText(roomCode)} title="Copy room code"
             className="font-mono text-xs text-white/30 border border-white/[0.08] rounded px-1.5 py-0.5 hover:text-coral-400 hover:border-coral-500/30 transition-colors whitespace-nowrap">
             {roomCode}
@@ -128,6 +147,36 @@ export default function GameScreen({ socket, gameState, playerId }) {
         {phase === 'round_end' && `Round ${currentRound} complete — next round starting…`}
       </div>
 
+      {/* ── md-only bid/trick strip (tablets 768–1023px) ── */}
+      <div className="hidden md:flex lg:hidden flex-shrink-0 px-3 py-1.5 gap-2 overflow-x-auto bg-navy-900/60 border-b border-white/[0.05]">
+        {players.map(p => {
+          const displayBid    = getDisplayBid(p);
+          const displayTricks = getDisplayTricks(p);
+          const hasBid = displayBid !== undefined;
+          return (
+            <div key={p.id}
+              className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1 flex-shrink-0 border
+                ${p.id === currentPlayerId
+                  ? 'bg-coral-500/15 border-coral-500/30'
+                  : 'bg-navy-800/60 border-white/[0.05]'}`}>
+              <span className={`text-[11px] font-body truncate max-w-[5rem]
+                ${p.id === myId ? 'text-coral-300' : 'text-white/55'}`}>{p.name}</span>
+              <span className="font-mono text-[11px] text-coral-400 font-bold flex-shrink-0">
+                {hasBid ? displayBid : '—'}
+              </span>
+              {phase === 'playing' && hasBid && (
+                <>
+                  <span className="text-white/20 text-[10px]">/</span>
+                  <span className="font-mono text-[11px] text-teal-400 font-bold flex-shrink-0">
+                    {displayTricks}
+                  </span>
+                </>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
       {/* ── Main 3-column layout ────────────────────────── */}
       <div className="flex-1 flex overflow-hidden min-h-0">
 
@@ -135,7 +184,8 @@ export default function GameScreen({ socket, gameState, playerId }) {
         <aside className="hidden md:flex flex-col w-52 border-r border-white/[0.06] flex-shrink-0 bg-navy-900/40 overflow-hidden">
           <div className="flex-shrink-0 p-3 overflow-y-auto" style={{ maxHeight: '55%' }}>
             <PlayerList players={players} bids={bids} tricksWon={tricksWon}
-              currentPlayerId={currentPlayerId} myId={myId} phase={phase} />
+              currentPlayerId={currentPlayerId} myId={myId} phase={phase}
+              teams={teams} mode={mode} />
           </div>
           <div className="flex-1 min-h-0 p-3 pt-0">
             <ChatPanel socket={socket} />
@@ -145,12 +195,6 @@ export default function GameScreen({ socket, gameState, playerId }) {
         {/* Centre column */}
         <main className="flex-1 flex flex-col overflow-hidden min-h-0">
 
-          {/*
-            ── TABLE ZONE (upper, flex-1) ──────────────────
-            During BIDDING → BidPanel sits here (inline, never overlaid).
-            During PLAYING → GameTable with cards on table.
-            This zone NEVER goes below the hand divider.
-          */}
           <div className="flex-1 min-h-0 flex items-center justify-center p-3 overflow-hidden">
             {phase === 'bidding' ? (
               <div className="w-full max-w-lg h-full">
@@ -162,6 +206,10 @@ export default function GameScreen({ socket, gameState, playerId }) {
                   players={players}
                   bids={bids}
                   myId={myId}
+                  isMyTurn={isMyTurn}
+                  alreadyBid={bids[myId] !== undefined}
+                  mode={mode}
+                  teams={teams}
                 />
               </div>
             ) : (
@@ -174,19 +222,15 @@ export default function GameScreen({ socket, gameState, playerId }) {
                   currentSubRound={currentSubRound}
                   currentPlayerId={currentPlayerId}
                   lastTrickWinner={lastTrickWinner}
+                  teams={teams}
+                  mode={mode}
                 />
               </div>
             )}
           </div>
 
-          {/* Divider — hard boundary, hand never moves above this */}
           <div className="h-px bg-white/[0.06] flex-shrink-0" />
 
-          {/*
-            ── HAND ZONE (lower, fixed) ─────────────────────
-            ALWAYS visible. NEVER covered.
-            Cards are scrollable horizontally if hand is large.
-          */}
           <div className="flex-shrink-0 bg-navy-900/70 py-3 px-2 overflow-x-auto"
             style={{ minHeight: 120 }}>
             <PlayerHand
@@ -201,16 +245,19 @@ export default function GameScreen({ socket, gameState, playerId }) {
         </main>
 
         {/* Right sidebar: bid & trick tracker */}
-        <aside className="hidden lg:flex flex-col w-40 border-l border-white/[0.06] p-3 gap-1.5 overflow-y-auto flex-shrink-0 bg-navy-900/40">
+        <aside className="hidden lg:flex flex-col w-44 border-l border-white/[0.06] p-3 gap-1.5 overflow-y-auto flex-shrink-0 bg-navy-900/40">
           <p className="text-[10px] uppercase tracking-widest text-white/25 font-body mb-1">Bids</p>
-          {players.map(p => (
-            <div key={`bid-${p.id}`} className="flex items-center justify-between bg-navy-800/60 rounded-lg px-2.5 py-1.5">
-              <span className="text-xs font-body text-white/55 truncate flex-1 mr-1">{p.name}</span>
-              <span className="font-mono text-xs text-coral-400 font-bold flex-shrink-0">
-                {bids[p.id] !== undefined ? bids[p.id] : '—'}
-              </span>
-            </div>
-          ))}
+          {players.map(p => {
+            const displayBid = getDisplayBid(p);
+            return (
+              <div key={`bid-${p.id}`} className="flex items-center justify-between bg-navy-800/60 rounded-lg px-2.5 py-1.5">
+                <span className="text-xs font-body text-white/55 truncate flex-1 mr-1">{p.name}</span>
+                <span className="font-mono text-xs text-coral-400 font-bold flex-shrink-0">
+                  {displayBid !== undefined ? displayBid : '—'}
+                </span>
+              </div>
+            );
+          })}
           {phase === 'playing' && (
             <>
               <p className="text-[10px] uppercase tracking-widest text-white/25 font-body mt-3 mb-1">Won</p>
@@ -218,7 +265,7 @@ export default function GameScreen({ socket, gameState, playerId }) {
                 <div key={`won-${p.id}`} className="flex items-center justify-between bg-navy-800/60 rounded-lg px-2.5 py-1.5">
                   <span className="text-xs font-body text-white/55 truncate flex-1 mr-1">{p.name}</span>
                   <span className="font-mono text-xs text-teal-400 font-bold flex-shrink-0">
-                    {tricksWon[p.id] || 0}
+                    {getDisplayTricks(p)}
                   </span>
                 </div>
               ))}

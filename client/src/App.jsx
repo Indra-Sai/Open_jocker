@@ -1,6 +1,5 @@
 // App.jsx
 
-import { useEffect } from 'react';
 import useGameStore from './store/gameStore';
 import { useSocket } from './hooks/useSocket';
 import HomeScreen from './components/HomeScreen';
@@ -9,15 +8,15 @@ import GameScreen from './components/GameScreen';
 import GameOver from './components/GameOver';
 
 export default function App() {
-  useSocket(); // establishes socket connection
-  
-  const socket = useGameStore(s => s.socket);
-  const gameState = useGameStore(s => s.gameState);
-  const playerId = useGameStore(s => s.playerId);
-  const roomCode = useGameStore(s => s.roomCode);
-  const reset = useGameStore(s => s.reset);
+  useSocket();
 
-  // Determine current screen
+  const socket      = useGameStore(s => s.socket);
+  const gameState   = useGameStore(s => s.gameState);
+  const playerId    = useGameStore(s => s.playerId);
+  const roomCode    = useGameStore(s => s.roomCode);
+  const connected   = useGameStore(s => s.connected);
+  const reset       = useGameStore(s => s.reset);
+
   const phase = gameState?.phase;
 
   function handleNewGame() {
@@ -25,28 +24,38 @@ export default function App() {
     reset();
   }
 
-  // No room yet — show home
+  const enriched = gameState ? { ...gameState, roomCode, myId: playerId } : null;
+
+  let screen;
   if (!roomCode || !gameState) {
-    return <HomeScreen socket={socket} />;
-  }
-
-  // Enrich gameState with roomCode and myId
-  const enriched = { ...gameState, roomCode, myId: playerId };
-
-  if (phase === 'waiting') {
-    return <WaitingRoom socket={socket} gameState={enriched} playerId={playerId} />;
-  }
-
-  if (phase === 'game_over') {
-    return (
+    screen = <HomeScreen socket={socket} />;
+  } else if (phase === 'waiting') {
+    screen = <WaitingRoom socket={socket} gameState={enriched} playerId={playerId} />;
+  } else if (phase === 'game_over') {
+    screen = (
       <GameOver
         players={gameState.players}
         cumulativeScores={gameState.cumulativeScores}
+        teams={gameState.teams}
+        mode={gameState.mode}
         onNewGame={handleNewGame}
       />
     );
+  } else {
+    screen = <GameScreen socket={socket} gameState={enriched} playerId={playerId} />;
   }
 
-  // bidding | playing | round_end
-  return <GameScreen socket={socket} gameState={enriched} playerId={playerId} />;
+  return (
+    <>
+      {connected === false && (
+        <div className="fixed top-0 inset-x-0 z-[100] px-4 py-2.5 bg-red-950/95
+          border-b border-red-500/30 backdrop-blur-sm flex items-center justify-center
+          gap-2 text-sm font-body text-red-200 animate-slide-up">
+          <span className="w-2 h-2 rounded-full bg-red-400 animate-pulse flex-shrink-0" />
+          Connection lost — reconnecting…
+        </div>
+      )}
+      {screen}
+    </>
+  );
 }

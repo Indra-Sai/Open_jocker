@@ -7,6 +7,7 @@ export default function HomeScreen({ socket }) {
   const [name, setName]             = useState('');
   const [numPlayers, setNumPlayers] = useState(4);
   const [numRounds, setNumRounds]   = useState(8);
+  const [mode, setMode]             = useState('single');
   const [roomCode, setRoomCode]     = useState('');
   const error    = useGameStore(s => s.error);
   const setError = useGameStore(s => s.setError);
@@ -16,7 +17,10 @@ export default function HomeScreen({ socket }) {
   function createGame() {
     if (!name.trim()) return setError('Please enter your name');
     setError(null);
-    socket.emit('create_room', { playerName: name.trim(), config: { numPlayers, numRounds } });
+    socket.emit('create_room', {
+      playerName: name.trim(),
+      config: { numPlayers, numRounds, mode: numPlayers % 2 === 0 ? mode : 'single' },
+    });
   }
 
   function joinGame() {
@@ -73,14 +77,17 @@ export default function HomeScreen({ socket }) {
                 placeholder="Enter your name" maxLength={20}
                 className="w-full bg-navy-700 border border-white/10 focus:border-coral-500/50 rounded-xl px-4 py-2.5 text-cream-100 placeholder-white/20 outline-none font-body transition-colors" />
             </div>
+
             <div>
               <label className="flex justify-between text-[11px] uppercase tracking-widest text-white/35 font-body mb-2">
                 <span>Players</span><span className="text-coral-400 font-bold">{numPlayers}</span>
               </label>
               <input type="range" min={2} max={8} value={numPlayers}
-                onChange={e => setNumPlayers(Number(e.target.value))} className="w-full accent-coral-500 cursor-pointer" />
+                onChange={e => { setNumPlayers(Number(e.target.value)); setMode('single'); }}
+                className="w-full accent-coral-500 cursor-pointer" />
               <div className="flex justify-between text-[10px] text-white/20 font-mono mt-1"><span>2</span><span>8</span></div>
             </div>
+
             <div>
               <label className="flex justify-between text-[11px] uppercase tracking-widest text-white/35 font-body mb-2">
                 <span>Rounds</span><span className="text-coral-400 font-bold">{numRounds}</span>
@@ -89,10 +96,38 @@ export default function HomeScreen({ socket }) {
                 onChange={e => setNumRounds(Number(e.target.value))} className="w-full accent-coral-500 cursor-pointer" />
               <div className="flex justify-between text-[10px] text-white/20 font-mono mt-1"><span>1</span><span>20</span></div>
             </div>
+
+            {/* Team mode toggle — only when player count is even */}
+            {numPlayers % 2 === 0 && (
+              <div>
+                <label className="block text-[11px] uppercase tracking-widest text-white/35 font-body mb-2">Game Mode</label>
+                <div className="flex gap-2">
+                  {[
+                    { value: 'single', label: 'Solo' },
+                    { value: 'team',   label: `Teams (${numPlayers / 2}×2)` },
+                  ].map(opt => (
+                    <button key={opt.value} onClick={() => setMode(opt.value)}
+                      className={`flex-1 py-2 rounded-xl border font-body text-sm transition-colors
+                        ${mode === opt.value
+                          ? 'bg-coral-500 border-coral-500 text-white font-bold'
+                          : 'bg-navy-700 border-white/10 text-white/50 hover:text-white/80 hover:border-white/20'}`}>
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+                {mode === 'team' && (
+                  <p className="text-[10px] text-white/30 font-body mt-1.5 text-center">
+                    Teams assigned by joining order · 1st &amp; {numPlayers / 2 + 1}th, 2nd &amp; {numPlayers / 2 + 2}th, …
+                  </p>
+                )}
+              </div>
+            )}
+
             <div className="flex items-center gap-2 bg-navy-700/60 border border-white/[0.06] rounded-xl px-4 py-2.5 text-xs font-body text-white/40">
               <span>🃏</span>
               <span>{numDecks} deck{numDecks !== 1 ? 's' : ''} · {numPlayers * numRounds} total cards needed</span>
             </div>
+
             <div className="flex gap-3 pt-1">
               <button onClick={() => { setView('home'); setError(null); }}
                 className="flex-1 py-2.5 bg-navy-700 hover:bg-navy-600 border border-white/10 text-white/50 font-body rounded-xl transition-colors">Back</button>
