@@ -354,7 +354,7 @@ io.on('connection', (socket) => {
   });
 
   // Voice (WebRTC signalling)
-  registerVoiceHandlers(io, socket, rooms);
+  registerVoiceHandlers(io, socket, rooms, socketToPlayer);
 
   // Disconnect
   socket.on('disconnect', (reason) => {
