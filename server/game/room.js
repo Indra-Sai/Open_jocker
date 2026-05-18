@@ -356,6 +356,7 @@ class Room {
         name:      p.name,
         connected: p.connected,
         isHost:    p.id === this.hostId,
+        socketId:  p.socketId,
       })),
       config:           this.config,
       cumulativeScores: this.getCumulativeScores(),

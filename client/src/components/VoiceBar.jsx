@@ -147,11 +147,11 @@ export default function VoiceBar({ socket, players, myId }) {
 
     try {
       if (signal.type === 'offer') {
-        await pc.setRemoteDescription(new RTCSessionDescription(signal));
+        await pc.setRemoteDescription(signal);
         peer.hasRemote = true;
         // Flush candidates that arrived before the offer
         for (const c of peer.pendingCandidates) {
-          await pc.addIceCandidate(new RTCIceCandidate(c)).catch(() => {});
+          await pc.addIceCandidate(c).catch(() => {});
         }
         peer.pendingCandidates = [];
 
@@ -163,17 +163,17 @@ export default function VoiceBar({ socket, players, myId }) {
         });
 
       } else if (signal.type === 'answer') {
-        await pc.setRemoteDescription(new RTCSessionDescription(signal));
+        await pc.setRemoteDescription(signal);
         peer.hasRemote = true;
         for (const c of peer.pendingCandidates) {
-          await pc.addIceCandidate(new RTCIceCandidate(c)).catch(() => {});
+          await pc.addIceCandidate(c).catch(() => {});
         }
         peer.pendingCandidates = [];
 
       } else if (signal.candidate !== undefined) {
         // ICE candidate — queue if remote description not set yet
         if (peer.hasRemote) {
-          await pc.addIceCandidate(new RTCIceCandidate(signal)).catch(() => {});
+          await pc.addIceCandidate(signal).catch(() => {});
         } else {
           peer.pendingCandidates.push(signal);
         }
@@ -188,9 +188,11 @@ export default function VoiceBar({ socket, players, myId }) {
     if (!socket) return;
 
     function onPeerVoiceReady({ socketId }) {
-      // Use ref — this handler is never recreated, so it must read current state via ref
       if (!voiceOnRef.current || !streamRef.current) return;
-      initPeerConnection(socketId, true);
+      // Deterministic initiator: only the peer with the lexicographically higher
+      // socketId creates the offer, preventing double-offer when both peers emit voice_ready.
+      const isInitiator = socket.id > socketId;
+      initPeerConnection(socketId, isInitiator);
     }
 
     function onWebrtcSignal({ fromSocketId, signal }) {

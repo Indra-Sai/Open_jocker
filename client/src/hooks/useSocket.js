@@ -42,14 +42,32 @@ export function useSocket() {
     });
 
     socket.on('reconnected', ({ playerId }) => {
-      // playerId confirmed by server
+      // Restore identity into the store so the App renders the correct screen.
+      // After a page refresh Zustand is empty; game_state_snapshot fills gameState
+      // but roomCode/playerId must be set here so the routing condition fires.
+      const saved = sessionStorage.getItem('openjocker_session');
+      if (saved) {
+        const { roomCode } = JSON.parse(saved);
+        store.setRoomCode(roomCode);
+        store.setPlayerId(playerId);
+      }
     });
 
     socket.on('game_state_update', (state) => store.setGameState(state));
     socket.on('game_started', (state) => store.setGameState(state));
     socket.on('game_state_snapshot', (state) => store.setGameState(state));
 
-    socket.on('room_error', ({ message }) => store.setError(message));
+    socket.on('room_error', ({ message }) => {
+      store.setError(message);
+      // If a reconnect attempt failed (no gameState loaded yet), clear the stale
+      // session so the user lands on the home screen, not a broken reconnect loop.
+      if (message === 'Room not found' || message === 'Player not found') {
+        const currentState = useGameStore.getState();
+        if (!currentState.gameState) {
+          sessionStorage.removeItem('openjocker_session');
+        }
+      }
+    });
     socket.on('game_error', ({ message }) => store.setError(message));
 
     socket.on('chat_broadcast', (msg) => store.addChatMessage(msg));

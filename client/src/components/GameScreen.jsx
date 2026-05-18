@@ -147,6 +147,27 @@ export default function GameScreen({ socket, gameState, playerId }) {
         {phase === 'round_end' && `Round ${currentRound} complete — next round starting…`}
       </div>
 
+      {/* ── Mobile opponents strip (below md) ─────────── */}
+      <div className="flex md:hidden flex-shrink-0 px-2 py-1.5 gap-1.5 overflow-x-auto bg-navy-900/60 border-b border-white/[0.05]">
+        {players.filter(p => p.id !== myId).map(p => {
+          const displayBid    = getDisplayBid(p);
+          const displayTricks = getDisplayTricks(p);
+          const isActive      = p.id === currentPlayerId;
+          return (
+            <div key={p.id}
+              className={`flex flex-col items-center flex-shrink-0 rounded-lg px-2.5 py-1 border min-w-[56px]
+                ${isActive ? 'bg-coral-500/15 border-coral-500/30' : 'bg-navy-800/60 border-white/[0.05]'}`}>
+              <span className={`text-[11px] font-body truncate max-w-[5rem] leading-tight
+                ${isActive ? 'text-coral-300' : 'text-white/60'}`}>{p.name}</span>
+              <span className="font-mono text-[10px] text-white/35 leading-tight">
+                B:{displayBid !== undefined ? displayBid : '—'}
+                {phase === 'playing' && ` W:${displayTricks}`}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+
       {/* ── md-only bid/trick strip (tablets 768–1023px) ── */}
       <div className="hidden md:flex lg:hidden flex-shrink-0 px-3 py-1.5 gap-2 overflow-x-auto bg-navy-900/60 border-b border-white/[0.05]">
         {players.map(p => {
@@ -231,6 +252,24 @@ export default function GameScreen({ socket, gameState, playerId }) {
 
           <div className="h-px bg-white/[0.06] flex-shrink-0" />
 
+          {/* My bid / tricks indicator above the hand */}
+          <div className="flex-shrink-0 flex items-center justify-center gap-4 px-3 py-1 bg-navy-900/50 border-b border-white/[0.04]">
+            <span className="text-xs font-body text-white/35">
+              Bid <span className="font-mono font-bold text-coral-400">
+                {bids[myId] !== undefined ? bids[myId] : '—'}
+              </span>
+            </span>
+            {phase === 'playing' && (
+              <span className="text-xs font-body text-white/35">
+                Won <span className="font-mono font-bold text-teal-400">
+                  {mode === 'team'
+                    ? (() => { const t = getTeamForPlayer(myId); return t ? (tricksWon[t.memberIds[0]] || 0) + (tricksWon[t.memberIds[1]] || 0) : tricksWon[myId] || 0; })()
+                    : tricksWon[myId] || 0}
+                </span>
+              </span>
+            )}
+          </div>
+
           <div className="flex-shrink-0 bg-navy-900/70 py-3 px-2 overflow-x-auto"
             style={{ minHeight: 120 }}>
             <PlayerHand
@@ -241,6 +280,25 @@ export default function GameScreen({ socket, gameState, playerId }) {
               onPlayCard={playCard}
               phase={phase}
             />
+          </div>
+
+          {/* Bottom score strip — mobile only (desktop has right sidebar) */}
+          <div className="flex lg:hidden flex-shrink-0 overflow-x-auto gap-3 px-3 py-1.5 bg-navy-950/80 border-t border-white/[0.05]">
+            {[...players]
+              .sort((a, b) => (cumulativeScores[b.id] || 0) - (cumulativeScores[a.id] || 0))
+              .map(p => {
+                const score = cumulativeScores[p.id] || 0;
+                return (
+                  <div key={p.id} className="flex items-center gap-1 flex-shrink-0">
+                    <span className={`text-[11px] font-body truncate max-w-[4rem] ${p.id === myId ? 'text-coral-300' : 'text-white/45'}`}>
+                      {p.name}
+                    </span>
+                    <span className={`font-mono text-[11px] font-bold ${score > 0 ? 'text-teal-400' : score < 0 ? 'text-red-400' : 'text-white/30'}`}>
+                      {score > 0 ? `+${score}` : score}
+                    </span>
+                  </div>
+                );
+              })}
           </div>
         </main>
 
