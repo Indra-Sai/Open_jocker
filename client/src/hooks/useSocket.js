@@ -13,6 +13,11 @@ export function useSocket() {
   useEffect(() => {
     const socket = io(SERVER_URL, {
       transports: ['websocket', 'polling'],
+      reconnection: true,
+      reconnectionAttempts: Infinity,
+      reconnectionDelay: 1000,
+      reconnectionDelayMax: 8000,
+      timeout: 20000,
     });
     socketRef.current = socket;
     store.setSocket(socket);

@@ -14,8 +14,10 @@ import useGameStore from '../store/gameStore';
 const ICE_SERVERS = [
   { urls: 'stun:stun.l.google.com:19302' },
   { urls: 'stun:stun1.l.google.com:19302' },
-  { urls: 'stun:stun2.l.google.com:19302' },
-  { urls: 'stun:stun3.l.google.com:19302' },
+  // Free TURN relay — ensures connections work across symmetric NAT (most home routers)
+  { urls: 'turn:openrelay.metered.ca:80',                username: 'openrelayproject', credential: 'openrelayproject' },
+  { urls: 'turn:openrelay.metered.ca:443',               username: 'openrelayproject', credential: 'openrelayproject' },
+  { urls: 'turn:openrelay.metered.ca:443?transport=tcp', username: 'openrelayproject', credential: 'openrelayproject' },
 ];
 
 export default function VoiceBar({ socket, players, myId }) {
@@ -247,6 +249,7 @@ export default function VoiceBar({ socket, players, myId }) {
   }
 
   function disableVoice() {
+    socket.emit('voice_stop'); // tell server we're leaving voice
     streamRef.current?.getTracks().forEach(t => t.stop());
     streamRef.current = null;
     Object.keys(peersRef.current).forEach(cleanupPeer);

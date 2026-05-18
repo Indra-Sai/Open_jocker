@@ -26,13 +26,13 @@ export default function GameTable({ table, players, trumpSuit, currentRound, cur
 
       {/* Trump pill — always high-contrast */}
       {trumpSuit && (
-        <div className={`flex items-center gap-2.5 rounded-2xl px-5 py-2.5 border-2 shadow-lg ${trumpBg}`}>
+        <div className={`flex items-center gap-2 rounded-xl px-3 py-1.5 sm:px-5 sm:py-2.5 border-2 shadow-lg ${trumpBg}`}>
           <span className="text-white/60 text-[10px] uppercase tracking-widest font-body font-semibold">Trump</span>
-          <span className={`text-3xl leading-none font-bold ${getSuitColorUI(trumpSuit)}`}
+          <span className={`text-xl sm:text-3xl leading-none font-bold ${getSuitColorUI(trumpSuit)}`}
             style={{ textShadow: '0 0 16px currentColor' }}>
             {trumpSuit}
           </span>
-          <span className={`text-base font-bold font-body ${getSuitColorUI(trumpSuit)}`}>
+          <span className={`text-sm sm:text-base font-bold font-body ${getSuitColorUI(trumpSuit)}`}>
             {getSuitLabel(trumpSuit)}
           </span>
         </div>

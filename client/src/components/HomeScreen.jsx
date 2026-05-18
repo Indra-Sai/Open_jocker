@@ -4,22 +4,29 @@ import useGameStore from '../store/gameStore';
 
 export default function HomeScreen({ socket }) {
   const [view, setView]             = useState('home');
-  const [name, setName]             = useState('');
+  const [name, setName]             = useState(() => localStorage.getItem('openjocker_name') || '');
   const [numPlayers, setNumPlayers] = useState(4);
   const [numRounds, setNumRounds]   = useState(8);
   const [mode, setMode]             = useState('single');
+  const [numDecks, setNumDecks]     = useState(1);
   const [roomCode, setRoomCode]     = useState('');
   const error    = useGameStore(s => s.error);
   const setError = useGameStore(s => s.setError);
 
-  const numDecks = Math.ceil((numPlayers * numRounds) / 52);
+  // Maximum rounds possible with the chosen deck count
+  const maxRounds = Math.floor((numDecks * 52) / numPlayers);
+
+  function saveName(v) {
+    setName(v);
+    if (v.trim()) localStorage.setItem('openjocker_name', v.trim());
+  }
 
   function createGame() {
     if (!name.trim()) return setError('Please enter your name');
     setError(null);
     socket.emit('create_room', {
       playerName: name.trim(),
-      config: { numPlayers, numRounds, mode: numPlayers % 2 === 0 ? mode : 'single' },
+      config: { numPlayers, numRounds, numDecks, mode: numPlayers % 2 === 0 ? mode : 'single' },
     });
   }
 
@@ -72,7 +79,7 @@ export default function HomeScreen({ socket }) {
           <div className="space-y-5">
             <div>
               <label className="block text-[11px] uppercase tracking-widest text-white/35 font-body mb-2">Your Name</label>
-              <input type="text" value={name} onChange={e => setName(e.target.value)}
+              <input type="text" value={name} onChange={e => saveName(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && createGame()}
                 placeholder="Enter your name" maxLength={20}
                 className="w-full bg-navy-700 border border-white/10 focus:border-coral-500/50 rounded-xl px-4 py-2.5 text-cream-100 placeholder-white/20 outline-none font-body transition-colors" />
@@ -88,13 +95,40 @@ export default function HomeScreen({ socket }) {
               <div className="flex justify-between text-[10px] text-white/20 font-mono mt-1"><span>2</span><span>8</span></div>
             </div>
 
+            {/* Deck selector */}
+            <div>
+              <label className="block text-[11px] uppercase tracking-widest text-white/35 font-body mb-2">Deck Size</label>
+              <div className="flex gap-2">
+                {[
+                  { val: 1, label: '1 Deck',  sub: '52 cards' },
+                  { val: 2, label: '2 Decks', sub: '104 cards' },
+                ].map(opt => (
+                  <button key={opt.val} onClick={() => {
+                    setNumDecks(opt.val);
+                    // Clamp rounds to new maximum
+                    const newMax = Math.floor((opt.val * 52) / numPlayers);
+                    if (numRounds > newMax) setNumRounds(newMax);
+                  }}
+                    className={`flex-1 py-2 rounded-xl border font-body text-sm transition-colors flex flex-col items-center gap-0.5
+                      ${numDecks === opt.val
+                        ? 'bg-coral-500 border-coral-500 text-white font-bold'
+                        : 'bg-navy-700 border-white/10 text-white/50 hover:text-white/80 hover:border-white/20'}`}>
+                    <span>{opt.label}</span>
+                    <span className={`text-[10px] font-normal ${numDecks === opt.val ? 'text-white/70' : 'text-white/25'}`}>
+                      {opt.sub}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
             <div>
               <label className="flex justify-between text-[11px] uppercase tracking-widest text-white/35 font-body mb-2">
                 <span>Rounds</span><span className="text-coral-400 font-bold">{numRounds}</span>
               </label>
-              <input type="range" min={1} max={20} value={numRounds}
+              <input type="range" min={1} max={maxRounds} value={numRounds}
                 onChange={e => setNumRounds(Number(e.target.value))} className="w-full accent-coral-500 cursor-pointer" />
-              <div className="flex justify-between text-[10px] text-white/20 font-mono mt-1"><span>1</span><span>20</span></div>
+              <div className="flex justify-between text-[10px] text-white/20 font-mono mt-1"><span>1</span><span>{maxRounds}</span></div>
             </div>
 
             {/* Team mode toggle — only when player count is even */}
@@ -123,11 +157,6 @@ export default function HomeScreen({ socket }) {
               </div>
             )}
 
-            <div className="flex items-center gap-2 bg-navy-700/60 border border-white/[0.06] rounded-xl px-4 py-2.5 text-xs font-body text-white/40">
-              <span>🃏</span>
-              <span>{numDecks} deck{numDecks !== 1 ? 's' : ''} · {numPlayers * numRounds} total cards needed</span>
-            </div>
-
             <div className="flex gap-3 pt-1">
               <button onClick={() => { setView('home'); setError(null); }}
                 className="flex-1 py-2.5 bg-navy-700 hover:bg-navy-600 border border-white/10 text-white/50 font-body rounded-xl transition-colors">Back</button>
@@ -145,7 +174,7 @@ export default function HomeScreen({ socket }) {
           <div className="space-y-5">
             <div>
               <label className="block text-[11px] uppercase tracking-widest text-white/35 font-body mb-2">Your Name</label>
-              <input type="text" value={name} onChange={e => setName(e.target.value)}
+              <input type="text" value={name} onChange={e => saveName(e.target.value)}
                 placeholder="Enter your name" maxLength={20}
                 className="w-full bg-navy-700 border border-white/10 focus:border-coral-500/50 rounded-xl px-4 py-2.5 text-cream-100 placeholder-white/20 outline-none font-body transition-colors" />
             </div>

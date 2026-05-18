@@ -57,7 +57,7 @@ export default function BidPanel({
               <button
                 key={n}
                 onClick={() => setBid(n)}
-                className={`w-11 h-11 rounded-xl font-display font-black text-xl transition-all active:scale-95
+                className={`w-10 h-10 sm:w-11 sm:h-11 rounded-xl font-display font-black text-lg sm:text-xl transition-all active:scale-95
                   ${bid === n
                     ? 'bg-coral-500 text-white shadow-lg shadow-coral-500/30 scale-110'
                     : 'bg-navy-700 hover:bg-navy-600 border border-white/10 hover:border-white/25 text-white/70'
@@ -76,8 +76,8 @@ export default function BidPanel({
                 className="w-12 h-12 rounded-2xl bg-navy-700 hover:bg-navy-600 border border-white/10 hover:border-white/25 text-white text-2xl font-bold transition-all active:scale-95 flex items-center justify-center"
               >−</button>
 
-              <div className="w-20 h-20 rounded-2xl bg-coral-500 flex items-center justify-center shadow-xl shadow-coral-500/30">
-                <span className="font-display text-5xl font-black text-white leading-none">{bid}</span>
+              <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl bg-coral-500 flex items-center justify-center shadow-xl shadow-coral-500/30">
+                <span className="font-display text-4xl sm:text-5xl font-black text-white leading-none">{bid}</span>
               </div>
 
               <button

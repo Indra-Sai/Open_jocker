@@ -17,9 +17,13 @@ class Room {
     this.roomCode = roomCode;
     this.hostId = hostId;
     this.players = [{ id: hostId, name: hostName, connected: true, socketId: null }];
+    const maxRoundsWith1Deck = Math.floor(52 / config.numPlayers);
+    const requestedDecks = config.numDecks === 2 ? 2 : 1;
+    const maxRounds = requestedDecks * maxRoundsWith1Deck;
     this.config = {
       numPlayers: config.numPlayers,
-      numRounds: Math.min(config.numRounds || 10, 20),
+      numRounds: Math.min(config.numRounds || 10, maxRounds),
+      numDecks:  requestedDecks,
       // Team mode only valid with an even player count
       mode: config.mode === 'team' && config.numPlayers % 2 === 0 ? 'team' : 'single',
     };
@@ -110,9 +114,8 @@ class Room {
     gs.tricksWon       = {};
     gs.table           = [];
 
-    // Deal cards
-    const numDecks  = calcNumDecks(this.players.length, this.config.numRounds);
-    const pool      = shuffle(createMultiDeck(numDecks));
+    // Deal cards using the host-selected deck count
+    const pool = shuffle(createMultiDeck(this.config.numDecks));
     const dealtHands = dealCards(pool, this.players.length, roundNum);
     gs.hands = {};
     this.players.forEach((p, i) => { gs.hands[p.id] = dealtHands[i]; });

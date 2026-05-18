@@ -12,8 +12,8 @@ const app = express();
 const server = http.createServer(app);
 const io = new Server(server, {
   cors: { origin: '*', methods: ['GET', 'POST'] },
-  pingInterval: 10000,
-  pingTimeout: 5000,
+  pingInterval: 25000,
+  pingTimeout: 60000,   // generous — prevents mobile network hiccups from dropping players
 });
 
 const PORT = process.env.PORT || 3001;
@@ -129,55 +129,66 @@ function scheduleAutoPlay(room) {
       broadcastRoomEvent(currentRoom, { type: 'auto_play', playerName: player.name, card: autoCard });
 
       if (result.error) return;
-      broadcastGameState(currentRoom);
-      if (result.subRoundEnd || result.roundEnd) handleRoundOrSubRoundEnd(currentRoom, result);
-      else scheduleAutoPlay(currentRoom);
+      if (result.subRoundEnd || result.roundEnd) showAndFinalizeTrick(currentRoom, result);
+      else { broadcastGameState(currentRoom); scheduleAutoPlay(currentRoom); }
     }
   }, AUTO_PLAY_DELAY);
 }
 
-// ── Round / sub-round end ──────────────────────────────────────
-function handleRoundOrSubRoundEnd(room, result) {
-  if (result.subRoundResult) {
-    log('info', room.roomCode, `Trick won by ${result.subRoundResult.winnerName}`, {
-      subRound: room.gameState.currentSubRound,
-    });
-    broadcastRoomEvent(room, { type: 'sub_round_end', ...result.subRoundResult });
-  }
+// ── Trick display delay ────────────────────────────────────────
+// How long (ms) the completed trick stays on screen before the table clears.
+const TRICK_DISPLAY_MS = 1600;
+
+// Step 2 (called after the display delay): clear table and advance to next phase.
+function finalizeTrick(roomCode, result) {
+  const r = rooms.get(roomCode);
+  if (!r) return;
+  r.gameState.table = [];
 
   if (result.roundEnd) {
-    log('info', room.roomCode, `Round ${room.gameState.currentRound} complete`, {
-      gameOver: result.gameOver,
-      scores: result.roundScores,
+    broadcastGameState(r);
+    log('info', roomCode, `Round ${r.gameState.currentRound} complete`, {
+      gameOver: result.gameOver, scores: result.roundScores,
     });
-
-    broadcastRoomEvent(room, {
+    broadcastRoomEvent(r, {
       type: 'round_end',
-      round: room.gameState.scores[room.gameState.scores.length - 1],
+      round: r.gameState.scores[r.gameState.scores.length - 1],
       cumulativeScores: result.cumulativeScores,
       gameOver: result.gameOver,
     });
-
     if (!result.gameOver) {
-      // FIX #2 & #3: auto-advance after 5s, broadcast new state to ALL clients.
-      // The phase change (round_end → bidding) triggers the client store to
-      // auto-dismiss round summary modals for every player.
       setTimeout(() => {
-        const r = rooms.get(room.roomCode);
-        if (!r) return;
-        if (r.gameState.phase !== PHASES.ROUND_END) {
-          log('debug', room.roomCode, 'Auto-advance skipped — phase already changed');
+        const r2 = rooms.get(roomCode);
+        if (!r2 || r2.gameState.phase !== PHASES.ROUND_END) {
+          log('debug', roomCode, 'Auto-advance skipped — phase already changed');
           return;
         }
-        log('info', room.roomCode, `Auto-advancing to round ${r.gameState.currentRound + 1}`);
-        r.advanceToNextRound();
-        broadcastGameState(r); // phase=bidding broadcast → clients dismiss modal
-        scheduleAutoPlay(r);
+        log('info', roomCode, `Auto-advancing to round ${r2.gameState.currentRound + 1}`);
+        r2.advanceToNextRound();
+        broadcastGameState(r2);
+        scheduleAutoPlay(r2);
       }, 5000);
     }
   } else {
-    scheduleAutoPlay(room);
+    broadcastGameState(r);
+    scheduleAutoPlay(r);
   }
+}
+
+// Step 1: restore trick cards on table, broadcast so players can see them, then delay.
+function showAndFinalizeTrick(room, result) {
+  const roomCode = room.roomCode;
+  // resolveSubRound() already cleared gs.table; put the cards back temporarily.
+  const subRoundResult = result.subRoundResult || result.lastSubRoundResult;
+  room.gameState.table = subRoundResult?.table || [];
+  broadcastGameState(room); // all clients see the completed trick
+  if (subRoundResult) {
+    log('info', roomCode, `Trick won by ${subRoundResult.winnerName}`, {
+      subRound: room.gameState.currentSubRound,
+    });
+    broadcastRoomEvent(room, { type: 'sub_round_end', ...subRoundResult });
+  }
+  setTimeout(() => finalizeTrick(roomCode, result), TRICK_DISPLAY_MS);
 }
 
 // ── Socket events ──────────────────────────────────────────────
@@ -295,9 +306,8 @@ io.on('connection', (socket) => {
       roundEnd: !!result.roundEnd,
     });
 
-    broadcastGameState(room);
-    if (result.subRoundEnd || result.roundEnd) handleRoundOrSubRoundEnd(room, result);
-    else scheduleAutoPlay(room);
+    if (result.subRoundEnd || result.roundEnd) showAndFinalizeTrick(room, result);
+    else { broadcastGameState(room); scheduleAutoPlay(room); }
   });
 
   // Chat

@@ -47,19 +47,21 @@ const useGameStore = create((set, get) => ({
       const roundChanged = prev.currentRound !== gameState.currentRound;
       const newGame = prev.phase === 'waiting' && gameState.phase === 'bidding';
 
-      // Show trump reveal whenever a new round starts
       if ((roundChanged || newGame) && gameState.trumpSuit) {
-        // Clear any existing trump reveal timer
         set({ showTrumpReveal: true, trumpRevealSuit: gameState.trumpSuit });
         setTimeout(() => set({ showTrumpReveal: false }), 3000);
       }
 
-      // Bug fix #2/#3: auto-dismiss round summary when server transitions to next round
-      // This ensures ALL clients dismiss it, not just the one who clicked Skip
       const leavingRoundEnd = prev.phase === 'round_end' && gameState.phase !== 'round_end';
       if (leavingRoundEnd && get().showRoundSummary) {
         set({ showRoundSummary: false, lastRoundData: null });
       }
+    }
+
+    // When a game ends, wipe the saved session so a page refresh lands on home,
+    // not back in an already-finished game.
+    if (gameState?.phase === 'game_over') {
+      sessionStorage.removeItem('openjocker_session');
     }
 
     set({ gameState });

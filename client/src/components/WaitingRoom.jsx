@@ -45,7 +45,7 @@ export default function WaitingRoom({ socket, gameState, playerId }) {
           {[
             { label: 'Rounds',  val: config.numRounds },
             { label: 'Players', val: `${players.length} / ${config.numPlayers}` },
-            { label: 'Decks',   val: Math.ceil((config.numPlayers * config.numRounds) / 52) },
+            { label: 'Decks',   val: config.numDecks ?? 1 },
           ].map(chip => (
             <div key={chip.label} className="flex flex-col items-center bg-navy-800/60 border border-white/[0.06] rounded-xl px-4 py-2">
               <span className="text-coral-400 font-mono font-bold text-lg leading-none">{chip.val}</span>
