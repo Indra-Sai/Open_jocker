@@ -18,6 +18,7 @@ export default function App() {
   const reset       = useGameStore(s => s.reset);
 
   const phase = gameState?.phase;
+  const isHost = gameState?.players?.find(p => p.id === playerId)?.isHost ?? false;
 
   function handleNewGame() {
     sessionStorage.removeItem('openjocker_session');
@@ -38,6 +39,8 @@ export default function App() {
         cumulativeScores={gameState.cumulativeScores}
         teams={gameState.teams}
         mode={gameState.mode}
+        isHost={isHost}
+        socket={socket}
         onNewGame={handleNewGame}
       />
     );

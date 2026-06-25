@@ -1,5 +1,9 @@
 // components/GameOver.jsx
-export default function GameOver({ players, cumulativeScores, teams, mode, onNewGame }) {
+import { useState } from 'react';
+
+export default function GameOver({ players, cumulativeScores, teams, mode, isHost, socket, onNewGame }) {
+  const [extendOpen, setExtendOpen] = useState(false);
+  const [extraRounds, setExtraRounds] = useState(3);
 
   // Build rows — team mode: one row per team; single: one per player
   let rows;
@@ -27,6 +31,15 @@ export default function GameOver({ players, cumulativeScores, teams, mode, onNew
   const maxScore = winner?.score || 1;
 
   const medals = ['🥇', '🥈', '🥉'];
+
+  function handleRematch() {
+    socket.emit('rematch');
+  }
+
+  function handleExtend() {
+    socket.emit('extend_game', { rounds: extraRounds });
+    setExtendOpen(false);
+  }
 
   return (
     <div className="min-h-screen bg-navy-950 flex items-center justify-center p-6 relative overflow-hidden">
@@ -65,9 +78,9 @@ export default function GameOver({ players, cumulativeScores, teams, mode, onNew
         </p>
 
         {/* Leaderboard */}
-        <div className="space-y-3 mb-10">
+        <div className="space-y-3 mb-8">
           {rows.map((row, rank) => {
-            const pct = Math.round((row.score / maxScore) * 100);
+            const pct = maxScore > 0 ? Math.round((row.score / maxScore) * 100) : 0;
             return (
               <div key={row.id}
                 className={`rounded-2xl px-5 py-4 border animate-slide-up
@@ -107,18 +120,68 @@ export default function GameOver({ players, cumulativeScores, teams, mode, onNew
           })}
         </div>
 
-        <button
-          onClick={onNewGame}
-          className="px-10 py-4 bg-coral-500 hover:bg-coral-400 text-white font-bold font-body rounded-2xl
-            transition-all text-lg shadow-lg shadow-coral-500/25 hover:scale-[1.03] active:scale-[0.98]
-            animate-slide-up"
+        {/* Action buttons */}
+        <div className="flex flex-col sm:flex-row gap-3 justify-center animate-slide-up"
           style={{
             animationDelay: `${380 + rows.length * 80 + 60}ms`,
             opacity: 0,
             animationFillMode: 'forwards',
           }}>
-          Play Again
-        </button>
+          {isHost ? (
+            <>
+              {/* Rematch — same players, back to waiting room */}
+              <button onClick={handleRematch}
+                className="px-8 py-3.5 bg-coral-500 hover:bg-coral-400 text-white font-bold font-body
+                  rounded-2xl transition-all text-base shadow-lg shadow-coral-500/25 hover:scale-[1.03] active:scale-[0.98]">
+                🔄 Rematch
+              </button>
+              {/* Extend — add more rounds and keep playing */}
+              <button onClick={() => setExtendOpen(v => !v)}
+                className="px-8 py-3.5 bg-teal-600/30 hover:bg-teal-600/50 border border-teal-500/30
+                  text-teal-300 font-bold font-body rounded-2xl transition-all text-base hover:scale-[1.02]">
+                ➕ Add Rounds
+              </button>
+              {/* New game — leave room entirely */}
+              <button onClick={onNewGame}
+                className="px-8 py-3.5 bg-navy-800 hover:bg-navy-700 border border-white/10
+                  text-white/50 font-body rounded-2xl transition-all text-base">
+                New Game
+              </button>
+            </>
+          ) : (
+            <button onClick={onNewGame}
+              className="px-10 py-4 bg-coral-500 hover:bg-coral-400 text-white font-bold font-body
+                rounded-2xl transition-all text-lg shadow-lg shadow-coral-500/25 hover:scale-[1.03] active:scale-[0.98]">
+              Play Again
+            </button>
+          )}
+        </div>
+
+        {/* Extend game panel */}
+        {extendOpen && isHost && (
+          <div className="mt-5 bg-navy-800 border border-teal-500/20 rounded-2xl p-5 animate-slide-up">
+            <p className="text-sm text-white/60 font-body mb-3">How many rounds to add?</p>
+            <div className="flex items-center justify-center gap-4 mb-4">
+              <button onClick={() => setExtraRounds(r => Math.max(1, r - 1))}
+                className="w-9 h-9 rounded-xl bg-navy-700 border border-white/10 text-white/60
+                  hover:text-white hover:bg-navy-600 font-bold text-lg transition-colors">−</button>
+              <span className="font-mono text-3xl font-bold text-coral-400 w-10 text-center">{extraRounds}</span>
+              <button onClick={() => setExtraRounds(r => Math.min(10, r + 1))}
+                className="w-9 h-9 rounded-xl bg-navy-700 border border-white/10 text-white/60
+                  hover:text-white hover:bg-navy-600 font-bold text-lg transition-colors">+</button>
+            </div>
+            <div className="flex gap-3">
+              <button onClick={() => setExtendOpen(false)}
+                className="flex-1 py-2.5 bg-navy-700 border border-white/10 text-white/40
+                  font-body rounded-xl text-sm transition-colors hover:bg-navy-600">Cancel</button>
+              <button onClick={handleExtend}
+                className="flex-1 py-2.5 bg-teal-600 hover:bg-teal-500 text-white font-bold
+                  font-body rounded-xl text-sm transition-colors">
+                Add {extraRounds} Round{extraRounds > 1 ? 's' : ''}
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
