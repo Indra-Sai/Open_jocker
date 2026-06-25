@@ -75,15 +75,19 @@ export function useSocket() {
     });
     socket.on('game_error', ({ message }) => store.setError(message));
 
+    // Kicked from room — clear session and go home
+    socket.on('kicked', () => {
+      sessionStorage.removeItem('openjocker_session');
+      store.setError('You were removed from the room by the host.');
+      store.reset();
+    });
+
     socket.on('chat_broadcast', (msg) => store.addChatMessage(msg));
 
     socket.on('room_event', (event) => {
-      if (event.type === 'sub_round_end') {
-        store.setSubRoundResult(event);
-      }
-      if (event.type === 'round_end') {
-        store.setRoundSummary(event);
-      }
+      if (event.type === 'sub_round_end') store.setSubRoundResult(event);
+      if (event.type === 'round_end') store.setRoundSummary(event);
+      if (event.type === 'reaction') store.addReaction(event);
     });
 
     return () => {

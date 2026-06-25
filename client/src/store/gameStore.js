@@ -33,6 +33,9 @@ const useGameStore = create((set, get) => ({
   isMuted: true,
   speakingPeers: {},
 
+  // Emoji reactions
+  reactions: [],
+
   // Actions
   setSocket: (socket) => set({ socket }),
   setConnected: (connected) => set({ connected }),
@@ -87,11 +90,17 @@ const useGameStore = create((set, get) => ({
     speakingPeers: { ...state.speakingPeers, [socketId]: speaking },
   })),
 
+  addReaction: (r) => {
+    const id = Date.now() + Math.random();
+    set(state => ({ reactions: [...state.reactions, { ...r, id }] }));
+    setTimeout(() => set(state => ({ reactions: state.reactions.filter(x => x.id !== id) })), 3500);
+  },
+
   reset: () => set({
     playerId: null, roomCode: null, gameState: null,
     chatMessages: [], error: null, showScoreboard: false,
     showTrumpReveal: false, showSubRoundResult: false,
-    showRoundSummary: false, lastRoundData: null,
+    showRoundSummary: false, lastRoundData: null, reactions: [],
   }),
 }));
 
