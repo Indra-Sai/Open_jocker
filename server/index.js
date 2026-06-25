@@ -363,6 +363,77 @@ io.on('connection', (socket) => {
     broadcastGameState(room);
   });
 
+  // Kick Player (host only, waiting phase)
+  socket.on('kick_player', ({ targetPlayerId }) => {
+    const info = socketToPlayer.get(socket.id);
+    if (!info) return;
+    const room = rooms.get(info.roomCode);
+    if (!room || room.hostId !== info.playerId) return;
+
+    const target = room.getPlayer(targetPlayerId);
+    if (!target) return;
+
+    const result = room.kickPlayer(targetPlayerId);
+    if (result.error) return socket.emit('room_error', { message: result.error });
+
+    if (target.socketId) {
+      io.to(target.socketId).emit('kicked', { reason: 'Removed by host' });
+      socketToPlayer.delete(target.socketId);
+    }
+    broadcastGameState(room);
+    broadcastRoomEvent(room, { type: 'player_kicked', playerName: target.name });
+    log('info', info.roomCode, `${target.name} kicked by host`);
+  });
+
+  // Rematch (host only, game_over phase)
+  socket.on('rematch', () => {
+    const info = socketToPlayer.get(socket.id);
+    if (!info) return;
+    const room = rooms.get(info.roomCode);
+    if (!room || room.hostId !== info.playerId) return;
+
+    const result = room.resetForRematch();
+    if (result.error) return socket.emit('room_error', { message: result.error });
+
+    broadcastGameState(room);
+    broadcastRoomEvent(room, { type: 'rematch', hostName: room.getPlayer(info.playerId)?.name });
+    log('info', info.roomCode, `Rematch started by ${room.getPlayer(info.playerId)?.name}`);
+  });
+
+  // Extend Game (host only, round_end or game_over phase)
+  socket.on('extend_game', ({ rounds = 3 }) => {
+    const info = socketToPlayer.get(socket.id);
+    if (!info) return;
+    const room = rooms.get(info.roomCode);
+    if (!room || room.hostId !== info.playerId) return;
+
+    const result = room.extendGame(rounds);
+    if (result.error) return socket.emit('room_error', { message: result.error });
+
+    room.advanceToNextRound();
+    broadcastGameState(room);
+    broadcastRoomEvent(room, { type: 'game_extended', rounds, totalRounds: room.config.numRounds });
+    scheduleAutoPlay(room);
+    log('info', info.roomCode, `Game extended by ${rounds} rounds (total: ${room.config.numRounds})`);
+  });
+
+  // Emoji Reaction
+  const ALLOWED_EMOJIS = new Set(['🔥','😂','💀','👏','😤','🎉','🫡','💯','🤡','😱','🤌','👀']);
+  socket.on('send_reaction', ({ emoji }) => {
+    const info = socketToPlayer.get(socket.id);
+    if (!info) return;
+    const room = rooms.get(info.roomCode);
+    if (!room) return;
+    if (!ALLOWED_EMOJIS.has(emoji)) return;
+    const player = room.getPlayer(info.playerId);
+    io.to(info.roomCode).emit('room_event', {
+      type: 'reaction',
+      emoji,
+      playerName: player?.name || 'Unknown',
+      playerId: info.playerId,
+    });
+  });
+
   // Voice (WebRTC signalling)
   registerVoiceHandlers(io, socket, rooms, socketToPlayer);
 

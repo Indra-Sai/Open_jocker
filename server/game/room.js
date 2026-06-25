@@ -1,6 +1,6 @@
 // room.js — Room state machine
 
-const { createMultiDeck, shuffle, calcNumDecks, dealCards, pickTrumpSuit } = require('./deck');
+const { createMultiDeck, shuffle, calcNumDecks, dealCards, pickTrumpSuit, SUITS } = require('./deck');
 const { calculatePoints, calculateRoundScores } = require('./scoring');
 const { selectAutoPlayCard, getLegalCards } = require('./autoplay');
 
@@ -34,6 +34,7 @@ class Room {
       currentRound: 0,
       currentSubRound: 0,
       trumpSuit: null,
+      trumpCard: null,
       bids: {},
       tricksWon: {},
       hands: {},
@@ -120,7 +121,10 @@ class Room {
     gs.hands = {};
     this.players.forEach((p, i) => { gs.hands[p.id] = dealtHands[i]; });
 
-    gs.trumpSuit = pickTrumpSuit();
+    // Trump card: first undealt card after all players' hands
+    const cardsDealt = this.players.length * roundNum;
+    gs.trumpCard = pool[cardsDealt] || null;
+    gs.trumpSuit = gs.trumpCard?.suit || pickTrumpSuit();
 
     if (this.config.mode === 'team') {
       // bidOrder: one bidder per team, team rotation shifts each round
@@ -336,6 +340,46 @@ class Room {
     return selectAutoPlayCard(hand, baseSuit, gs.trumpSuit);
   }
 
+  kickPlayer(targetId) {
+    if (this.gameState.phase !== PHASES.WAITING) return { error: 'Can only kick during waiting room' };
+    if (targetId === this.hostId) return { error: 'Cannot kick the host' };
+    const idx = this.players.findIndex(p => p.id === targetId);
+    if (idx === -1) return { error: 'Player not found' };
+    const [removed] = this.players.splice(idx, 1);
+    return { success: true, removed };
+  }
+
+  resetForRematch() {
+    if (this.gameState.phase !== PHASES.GAME_OVER) return { error: 'Game not over yet' };
+    this.gameState = {
+      phase: PHASES.WAITING,
+      currentRound: 0,
+      currentSubRound: 0,
+      trumpSuit: null,
+      trumpCard: null,
+      bids: {}, tricksWon: {}, hands: {}, table: [], scores: [],
+      currentPlayerIndex: 0, leadPlayerIndex: 0,
+      bidOrder: [], playOrder: [], subRoundLeaderIndex: 0,
+    };
+    this.teams = [];
+    this.autoPlayTimers = {};
+    return { success: true };
+  }
+
+  extendGame(additionalRounds) {
+    if (this.gameState.phase !== PHASES.GAME_OVER && this.gameState.phase !== PHASES.ROUND_END) {
+      return { error: 'Can only extend at round end or game over' };
+    }
+    const n = Number(additionalRounds);
+    if (!Number.isInteger(n) || n < 1 || n > 10) return { error: 'Additional rounds must be 1–10' };
+    this.config.numRounds += n;
+    // If was game_over, roll back to round_end so advanceToNextRound works
+    if (this.gameState.phase === PHASES.GAME_OVER) {
+      this.gameState.phase = PHASES.ROUND_END;
+    }
+    return { success: true };
+  }
+
   getPublicState() {
     const gs = this.gameState;
     const currentPlayerId = gs.phase === PHASES.BIDDING
@@ -347,6 +391,7 @@ class Room {
       currentRound:     gs.currentRound,
       currentSubRound:  gs.currentSubRound,
       trumpSuit:        gs.trumpSuit,
+      trumpCard:        gs.trumpCard,
       bids:             gs.bids,
       tricksWon:        gs.tricksWon,
       table:            gs.table,
