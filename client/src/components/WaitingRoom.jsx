@@ -1,5 +1,6 @@
 // components/WaitingRoom.jsx
 import { useState } from 'react';
+import EmojiReactions from './EmojiReactions';
 
 export default function WaitingRoom({ socket, gameState, playerId }) {
   const { players, config, roomCode } = gameState;
@@ -13,6 +14,10 @@ export default function WaitingRoom({ socket, gameState, playerId }) {
     navigator.clipboard.writeText(roomCode);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
+  }
+
+  function kickPlayer(targetId) {
+    socket.emit('kick_player', { targetPlayerId: targetId });
   }
 
   return (
@@ -75,6 +80,15 @@ export default function WaitingRoom({ socket, gameState, playerId }) {
                   {p.id === playerId && <span className="text-coral-400/60 text-xs ml-1.5">(you)</span>}
                 </span>
                 {p.isHost && <span className="text-xs text-white/40 font-body bg-navy-600 rounded-full px-2 py-0.5">Host 👑</span>}
+                {/* Host kick button — visible to host, hidden on self and other hosts */}
+                {isHost && p.id !== playerId && !p.isHost && (
+                  <button onClick={() => kickPlayer(p.id)}
+                    title={`Kick ${p.name}`}
+                    className="ml-1 w-6 h-6 flex items-center justify-center rounded-full
+                      text-white/25 hover:text-red-400 hover:bg-red-500/10 transition-colors text-xs">
+                    ✕
+                  </button>
+                )}
               </div>
             ))}
 
@@ -121,21 +135,24 @@ export default function WaitingRoom({ socket, gameState, playerId }) {
           </div>
         )}
 
-        {/* Start / waiting */}
-        {isHost ? (
-          <button onClick={() => socket.emit('start_game')} disabled={!allJoined}
-            className={`w-full py-4 rounded-2xl font-bold font-body text-lg transition-all
-              ${allJoined
-                ? 'bg-coral-500 hover:bg-coral-400 text-white shadow-lg shadow-coral-500/25 hover:scale-[1.02] active:scale-[0.98]'
-                : 'bg-navy-800 text-white/20 cursor-not-allowed border border-white/[0.06]'}`}>
-            {allJoined ? 'Start Game 🎮' : `Waiting for ${config.numPlayers - players.length} more…`}
-          </button>
-        ) : (
-          <div className="text-center py-4 text-white/30 font-body text-sm">
-            <span className="inline-block w-2 h-2 rounded-full bg-coral-500 animate-pulse mr-2" />
-            Waiting for host to start…
-          </div>
-        )}
+        {/* Start / waiting + emoji reactions */}
+        <div className="flex items-center gap-3">
+          {isHost ? (
+            <button onClick={() => socket.emit('start_game')} disabled={!allJoined}
+              className={`flex-1 py-4 rounded-2xl font-bold font-body text-lg transition-all
+                ${allJoined
+                  ? 'bg-coral-500 hover:bg-coral-400 text-white shadow-lg shadow-coral-500/25 hover:scale-[1.02] active:scale-[0.98]'
+                  : 'bg-navy-800 text-white/20 cursor-not-allowed border border-white/[0.06]'}`}>
+              {allJoined ? 'Start Game 🎮' : `Waiting for ${config.numPlayers - players.length} more…`}
+            </button>
+          ) : (
+            <div className="flex-1 text-center py-4 text-white/30 font-body text-sm">
+              <span className="inline-block w-2 h-2 rounded-full bg-coral-500 animate-pulse mr-2" />
+              Waiting for host to start…
+            </div>
+          )}
+          <EmojiReactions socket={socket} compact />
+        </div>
       </div>
     </div>
   );
