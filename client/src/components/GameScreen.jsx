@@ -10,6 +10,7 @@ import TrumpReveal from './TrumpReveal';
 import RoundSummary from './RoundSummary';
 import ChatPanel from './ChatPanel';
 import VoiceBar from './VoiceBar';
+import EmojiReactions from './EmojiReactions';
 
 export default function GameScreen({ socket, gameState, playerId }) {
   const [chatOpen, setChatOpen]             = useState(false);
@@ -26,7 +27,7 @@ export default function GameScreen({ socket, gameState, playerId }) {
   const setError          = useGameStore(s => s.setError);
 
   const {
-    phase, currentRound, currentSubRound, trumpSuit,
+    phase, currentRound, currentSubRound, trumpSuit, trumpCard,
     bids, tricksWon, table, myHand, players, currentPlayerId,
     scores, cumulativeScores, config, myId, roomCode,
     mode, teams,
@@ -61,7 +62,7 @@ export default function GameScreen({ socket, gameState, playerId }) {
     <div className="h-screen flex flex-col bg-navy-950 overflow-hidden">
 
       {/* ── Full-screen overlays ────────────────────────── */}
-      {showTrumpReveal && <TrumpReveal suit={trumpRevealSuit} round={currentRound} />}
+      {showTrumpReveal && <TrumpReveal suit={trumpRevealSuit} trumpCard={trumpCard} round={currentRound} />}
 
       {showScoreboard && (
         <Scoreboard players={players} scores={scores} cumulativeScores={cumulativeScores}
@@ -112,6 +113,7 @@ export default function GameScreen({ socket, gameState, playerId }) {
 
         <div className="flex items-center gap-1.5 flex-shrink-0">
           <VoiceBar socket={socket} players={players} myId={myId} />
+          <EmojiReactions socket={socket} compact />
           <button onClick={() => setShowScoreboard(true)}
             className="flex items-center gap-1 px-2.5 py-1.5 bg-navy-700 hover:bg-navy-600 border border-white/[0.08] rounded-lg text-white/60 hover:text-white/90 text-xs font-body transition-colors">
             📊<span className="hidden sm:inline ml-1">Scores</span>
@@ -239,6 +241,7 @@ export default function GameScreen({ socket, gameState, playerId }) {
                   table={table || []}
                   players={players}
                   trumpSuit={trumpSuit}
+                  trumpCard={trumpCard}
                   currentRound={currentRound}
                   currentSubRound={currentSubRound}
                   currentPlayerId={currentPlayerId}

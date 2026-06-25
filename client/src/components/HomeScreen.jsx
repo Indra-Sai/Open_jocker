@@ -1,6 +1,8 @@
 // components/HomeScreen.jsx
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import useGameStore from '../store/gameStore';
+
+const SERVER_URL = import.meta.env.VITE_SERVER_URL || '';
 
 export default function HomeScreen({ socket }) {
   const [view, setView]             = useState('home');
@@ -10,8 +12,17 @@ export default function HomeScreen({ socket }) {
   const [mode, setMode]             = useState('single');
   const [numDecks, setNumDecks]     = useState(1);
   const [roomCode, setRoomCode]     = useState('');
+  const [serverReady, setServerReady] = useState(!SERVER_URL); // true if same-origin
   const error    = useGameStore(s => s.error);
   const setError = useGameStore(s => s.setError);
+
+  // Ping the server to wake it up (Railway free tier has cold starts)
+  useEffect(() => {
+    if (!SERVER_URL) return;
+    fetch(`${SERVER_URL}/health`, { signal: AbortSignal.timeout(15000) })
+      .then(() => setServerReady(true))
+      .catch(() => setServerReady(true)); // still allow play even if ping fails
+  }, []);
 
   // Maximum rounds possible with the chosen deck count
   const maxRounds = Math.floor((numDecks * 52) / numPlayers);
@@ -49,6 +60,15 @@ export default function HomeScreen({ socket }) {
           Real-time Multiplayer Card Game
         </p>
       </div>
+
+      {/* Server wake indicator */}
+      {!serverReady && (
+        <div className="mb-4 px-4 py-2.5 bg-navy-800/80 border border-white/10 rounded-xl
+          text-white/50 text-xs font-body flex items-center gap-2 max-w-sm w-full">
+          <span className="w-2 h-2 rounded-full bg-coral-400 animate-pulse flex-shrink-0" />
+          Waking up server… this may take a few seconds
+        </div>
+      )}
 
       {/* Error */}
       {error && (
