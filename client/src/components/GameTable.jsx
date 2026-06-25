@@ -3,7 +3,7 @@ import { useState, useEffect } from 'react';
 import PlayingCard from './PlayingCard';
 import { getSuitColorUI, getSuitLabel } from '../utils/cardHelpers';
 
-export default function GameTable({ table, players, trumpSuit, currentRound, currentSubRound, currentPlayerId, lastTrickWinner }) {
+export default function GameTable({ table, players, trumpSuit, trumpCard, currentRound, currentSubRound, currentPlayerId, lastTrickWinner }) {
   const [winnerToast, setWinnerToast] = useState(null);
   const playerMap = {};
   players.forEach(p => { playerMap[p.id] = p; });
@@ -24,10 +24,15 @@ export default function GameTable({ table, players, trumpSuit, currentRound, cur
   return (
     <div className="flex flex-col items-center gap-4 w-full">
 
-      {/* Trump pill — always high-contrast */}
+      {/* Trump pill — shows actual trump card rank if available */}
       {trumpSuit && (
         <div className={`flex items-center gap-2 rounded-xl px-3 py-1.5 sm:px-5 sm:py-2.5 border-2 shadow-lg ${trumpBg}`}>
           <span className="text-white/60 text-[10px] uppercase tracking-widest font-body font-semibold">Trump</span>
+          {trumpCard && (
+            <span className={`text-sm sm:text-base font-black font-mono ${getSuitColorUI(trumpSuit)}`}>
+              {trumpCard.rank}
+            </span>
+          )}
           <span className={`text-xl sm:text-3xl leading-none font-bold ${getSuitColorUI(trumpSuit)}`}
             style={{ textShadow: '0 0 16px currentColor' }}>
             {trumpSuit}
